@@ -1,38 +1,46 @@
-const CACHE_NAME = 'tvbykafi-v1';
-const ASSETS = [
+const CACHE_NAME = 'tvbykafi-v2';
+const ASSETS_TO_CACHE = [
+  '/',
   '/index.html',
+  '/user.html',
   '/manifest.json'
 ];
 
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS_TO_CACHE))
   );
   self.skipWaiting();
 });
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys => 
+      Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
     )
   );
   self.clients.claim();
 });
 
-self.addEventListener('fetch', e => {
-  // Firebase ও HLS stream cache করব না
+self.addEventListener('fetch', event => {
+  // Streaming এবং Firebase লিঙ্ক ক্যাশ করব না
   if (
-    e.request.url.includes('firestore') ||
-    e.request.url.includes('firebase') ||
-    e.request.url.includes('.m3u8') ||
-    e.request.url.includes('.ts') ||
-    e.request.url.includes('toffeelive')
+    event.request.url.includes('firestore') ||
+    event.request.url.includes('firebase') ||
+    event.request.url.includes('.m3u8') ||
+    event.request.url.includes('.ts')
   ) {
     return;
   }
 
-  e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+  event.respondWith(
+    caches.match(event.request).then(cachedResponse => {
+      return cachedResponse || fetch(event.request).catch(() => {
+        // অফলাইন থাকলে index.html দেখাবে
+        if (event.request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+      });
+    })
   );
 });
