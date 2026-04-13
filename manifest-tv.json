@@ -1,0 +1,37 @@
+{
+  "name": "TV BY KAFI",
+  "short_name": "TV BY KAFI",
+  "description": "Live TV Streaming App by Kafi",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#e50914",
+  "lang": "bn",
+  "id": "tvbykafi-tv",
+  "icons": [
+    {
+      "src": "https://tv-by-kafi.vercel.app/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://tv-by-kafi.vercel.app/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["entertainment"],
+  "screenshots": [
+    {
+      "src": "https://tv-by-kafi.vercel.app/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "TV BY KAFI TV Screen"
+    }
+  ]
+}
