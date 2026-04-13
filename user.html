@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TV BY KAFI</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#e50914">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="TV BY KAFI">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/service-worker.js');
+        });
+      }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        :root { --netflix-red: #e50914; --dark-bg: #000; --card-bg: #141414; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--dark-bg); color: #fff; margin: 0; overflow-x: hidden; }
+        
+        /* Sidebar Menu */
+        #sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 100; background: #0a0a0a; border-right: 1px solid #222; }
+        .sidebar-hidden { transform: translateX(-100%); }
+        
+        /* Circular Channel Card */
+        .channel-card { width: 105px; text-align: center; cursor: pointer; transition: 0.3s; position: relative; }
+        .channel-card:hover { transform: scale(1.1); }
+        .icon-circle { 
+            width: 95px; height: 95px; border-radius: 50%; background: #1a1a1a; 
+            border: 2px solid #333; display: flex; align-items: center; justify-content: center; 
+            overflow: hidden; margin-bottom: 8px; position: relative;
+        }
+        .icon-circle img { width: 65%; height: 65%; object-fit: contain; }
+        .playing .icon-circle { border-color: var(--netflix-red); box-shadow: 0 0 15px var(--netflix-red); }
+
+        /* Favorite Button */
+        .fav-btn { position: absolute; top: 0; right: 0; z-index: 20; background: rgba(0,0,0,0.7); border-radius: 50%; padding: 4px; border: 1px solid #333; }
+
+        /* Dot Loading Animation */
+        .dot-loader { display: flex; gap: 6px; justify-content: center; }
+        .dot-loader div { width: 12px; height: 12px; background: var(--netflix-red); border-radius: 50%; animation: dot-pulse 1.2s infinite ease-in-out; }
+        .dot-loader div:nth-child(2) { animation-delay: 0.2s; }
+        .dot-loader div:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes dot-pulse { 0%, 100% { transform: scale(0.3); opacity: 0.3; } 50% { transform: scale(1); opacity: 1; } }
+
+        /* Expiry Box */
+        .expiry-box { background: rgba(229, 9, 20, 0.15); border: 2px solid var(--netflix-red); color: white; padding: 25px; border-radius: 20px; text-align: center; margin: 20px 0; }
+        
+        /* Active Category */
+        .cat-active { background: var(--netflix-red) !important; color: white !important; }
+
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+
+        /* Notice Marquee */
+        .notice-bar { background: rgba(229, 9, 20, 0.2); border-bottom: 1px solid rgba(229, 9, 20, 0.3); padding: 8px 0; font-size: 12px; font-weight: bold; color: #ff4d4d; }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar Menu -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 w-64 sidebar-hidden">
+        <div class="p-8">
+            <h2 class="text-3xl font-black text-[#e50914] mb-10">TV BY KAFI</h2>
+            <nav class="space-y-6">
+                <button onclick="showPage('home')" class="w-full text-left font-bold text-gray-400 hover:text-white text-lg">🏠 Home</button>
+                <button onclick="showPage('wishlist')" class="w-full text-left font-bold text-gray-400 hover:text-white text-lg">❤️ Wishlist</button>
+                <button onclick="showPage('profile')" class="w-full text-left font-bold text-gray-400 hover:text-white text-lg">👤 Profile</button>
+                <button onclick="showPage('support')" class="w-full text-left font-bold text-gray-400 hover:text-white text-lg">🎧 Support</button>
+                <div class="pt-10 border-t border-white/5">
+                    <button onclick="handleLogout()" class="w-full text-left font-bold text-red-500">Log Out</button>
+                </div>
+            </nav>
+        </div>
+    </aside>
+
+    <!-- Header -->
+    <header id="main-header" class="hidden sticky top-0 bg-black/95 backdrop-blur-sm z-50 border-b border-white/5">
+        <div class="px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleSidebar()" class="text-2xl hover:text-red-500 transition">☰</button>
+                <h1 class="text-2xl font-black text-[#e50914] tracking-tighter">PRO</h1>
+            </div>
+            <div class="text-right">
+                <p class="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Subscription Ends</p>
+                <p id="expiry-timer" class="text-xs font-black text-green-500">Checking...</p>
+            </div>
+        </div>
+        <!-- Notice Board -->
+        <div id="notice-container" class="hidden notice-bar overflow-hidden">
+            <marquee id="live-notice" scrollamount="5"></marquee>
+        </div>
+    </header>
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="min-h-screen flex items-center justify-center p-6 bg-[url('https://assets.nflxext.com/ffe/siteui/vlv3/f841d4c7/BD-en.jpg')] bg-cover">
+        <div class="bg-black/80 backdrop-blur-md p-10 rounded-2xl w-full max-w-md border-t-4 border-[#e50914] shadow-2xl">
+            <h2 class="text-3xl font-black text-center mb-8 text-[#e50914]">LOGIN</h2>
+            <div class="space-y-4">
+                <input type="text" id="user-id" placeholder="User ID / Email" class="w-full p-4 rounded bg-[#333] outline-none border border-transparent focus:border-red-500 transition">
+                <input type="password" id="user-pin" placeholder="6-Digit PIN" class="w-full p-4 rounded bg-[#333] outline-none text-center tracking-[0.5em] border border-transparent focus:border-red-500">
+                <button onclick="handleLogin()" id="login-btn" class="w-full bg-[#e50914] p-4 rounded-xl font-black text-lg hover:bg-red-700 transition transform active:scale-95">START STREAMING</button>
+            </div>
+            <p id="login-err" class="text-red-500 text-xs mt-4 text-center font-bold hidden">❌ Invalid Credentials!</p>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div id="main-app" class="hidden p-4 md:p-8">
+        
+        <!-- Search Bar -->
+        <div id="search-box" class="mb-8 max-w-2xl mx-auto">
+            <input type="text" id="search-input" oninput="searchChannels()" placeholder="🔍 Search channels..." class="w-full bg-[#141414] p-4 rounded-2xl border border-white/10 outline-none focus:border-[#e50914] transition text-center text-lg">
+        </div>
+
+        <!-- Video Player -->
+        <div id="player-container" class="hidden mb-10 max-w-4xl mx-auto">
+            <div class="relative bg-black rounded-[30px] overflow-hidden border border-white/5 shadow-2xl">
+                <div id="player-spinner" class="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
+                    <div class="dot-loader"><div></div><div></div><div></div></div>
+                </div>
+                <video id="custom-video" class="w-full aspect-video" controls playsinline></video>
+            </div>
+            <div class="mt-4 flex justify-between items-center px-2">
+                <div>
+                    <h3 id="now-playing" class="text-2xl font-black text-white"></h3>
+                    <p class="text-[10px] text-red-500 font-bold uppercase tracking-widest">Live HD Stream</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="cycleAspectRatio()" class="px-5 py-2 bg-[#333] rounded-full text-[10px] font-bold uppercase hover:bg-red-600 transition">Size</button>
+                    <button onclick="closePlayer()" class="px-5 py-2 bg-red-600 rounded-full text-[10px] font-bold uppercase hover:bg-red-700 transition">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Expiry Warning -->
+        <div id="expiry-warning" class="hidden expiry-box animate-pulse">
+            <h3 id="exp-msg-title" class="text-2xl font-black mb-2 uppercase">Subscription Expired!</h3>
+            <p id="exp-msg-body" class="text-sm opacity-90">আপনার মেয়াদের শেষ হয়েছে, অনুগ্রহ করে রিচার্জ করুন।</p>
+            <button onclick="showPage('profile')" class="mt-4 bg-white text-red-600 px-6 py-2 rounded-full font-bold text-xs uppercase">Renew Now</button>
+        </div>
+
+        <!-- Home Page Content -->
+        <div id="home-page" class="page-view">
+            <div id="category-bar" class="flex gap-3 overflow-x-auto pb-6 mb-8 no-scrollbar"></div>
+            <div id="channel-grid" class="flex flex-wrap gap-8 justify-center sm:justify-start"></div>
+        </div>
+
+        <!-- Wishlist Page Content -->
+        <div id="wishlist-page" class="page-view hidden">
+            <h2 class="text-2xl font-black mb-8 border-l-4 border-red-600 pl-4">YOUR WISHLIST</h2>
+            <div id="wishlist-grid" class="flex flex-wrap gap-8 justify-center sm:justify-start"></div>
+        </div>
+
+        <!-- Profile Page -->
+        <div id="profile-page" class="page-view hidden max-w-xl mx-auto space-y-6">
+            <div class="bg-[#141414] p-10 rounded-[30px] border border-white/5 shadow-2xl">
+                <div class="text-center mb-8">
+                    <div class="w-20 h-20 bg-red-600 rounded-full mx-auto flex items-center justify-center text-3xl font-black mb-4">U</div>
+                    <h2 id="p-name" class="text-2xl font-black">User Profile</h2>
+                    <p id="p-email" class="text-gray-500 text-sm"></p>
+                </div>
+                <div class="space-y-4 text-sm">
+                    <div class="flex justify-between p-4 bg-black/40 rounded-2xl"><span>PIN Access:</span><span id="p-pin" class="font-bold text-red-500"></span></div>
+                    <div class="flex justify-between p-4 bg-black/40 rounded-2xl"><span>Join Date:</span><span id="p-start" class="font-bold text-green-500"></span></div>
+                    <div class="flex justify-between p-4 bg-black/40 rounded-2xl"><span>Expiry Date:</span><span id="p-end" class="font-bold text-red-600"></span></div>
+                </div>
+            </div>
+
+<!-- পেমেন্ট ইনস্ট্রাকশন সেকশন -->
+<div id="payment-notice" class="bg-yellow-600/10 border border-yellow-600/20 p-5 rounded-2xl mb-6">
+    <h3 class="text-yellow-500 font-bold mb-2">📢 পেমেন্ট ইনস্ট্রাকশন:</h3>
+    <p class="text-xs text-gray-300 leading-relaxed">
+        নিচের নাম্বারে সেন্ড মানি করুন। পেমেন্ট করার পর ট্রানজেকশন আইডি (TrxID) দিয়ে সাবমিট করুন।
+    </p>
+    <div class="mt-4 space-y-2">
+        <p class="text-sm font-bold bg-black p-2 rounded-lg border border-white/5">
+            Bkash: <span id="pay-bkash" class="text-pink-500">Loading...</span>
+        </p>
+        <p class="text-sm font-bold bg-black p-2 rounded-lg border border-white/5">
+            Nagad: <span id="pay-nagad" class="text-orange-500">Loading...</span>
+        </p>
+    </div>
+</div>
+
+            <!-- Renewal Form -->
+            <div class="bg-[#141414] p-8 rounded-[30px] border border-blue-600/20 shadow-2xl">
+                <h3 class="text-xl font-black mb-4 text-blue-500 uppercase">Renew Subscription</h3>
+                <p class="text-xs text-gray-400 mb-6">Monthly Price: <span id="display-price" class="text-white font-bold">...</span> BDT</p>
+                <div class="space-y-4">
+                    <input type="text" id="pay-number" placeholder="Bkash/Nagad Number" class="w-full p-4 rounded-xl bg-black border border-white/10 outline-none focus:border-blue-500">
+                    <input type="text" id="pay-trx" placeholder="Transaction ID (TrxID)" class="w-full p-4 rounded-xl bg-black border border-white/10 outline-none focus:border-blue-500">
+                    <button onclick="sendPaymentRequest()" id="pay-btn" class="w-full bg-blue-600 p-4 rounded-xl font-bold hover:bg-blue-700 transition">SUBMIT REQUEST</button>
+                </div>
+            </div>
+            <button onclick="showPage('home')" class="w-full bg-[#333] p-4 rounded-2xl font-bold hover:bg-white hover:text-black transition">Back to Home</button>
+        </div>
+
+        <!-- Support Page Content -->
+        <div id="support-page" class="page-view hidden max-w-xl mx-auto bg-[#141414] p-10 rounded-[30px] border border-white/5 shadow-2xl text-center">
+            <div class="w-20 h-20 bg-blue-600 rounded-full mx-auto flex items-center justify-center text-3xl mb-6">🎧</div>
+            <h2 class="text-2xl font-black mb-2">Customer Support</h2>
+            <p class="text-gray-400 text-sm mb-8">আপনার যদি কোনো সমস্যা হয় তবে নিচের মাধ্যমে আমাদের সাথে যোগাযোগ করুন।</p>
+            
+            <div class="space-y-4">
+                <a id="support-wa-link" href="#" target="_blank" class="flex items-center justify-between p-4 bg-green-600/10 border border-green-600/20 rounded-2xl hover:bg-green-600/20 transition">
+                    <div class="flex items-center gap-3"><span class="text-xl">💬</span><span class="font-bold">WhatsApp Support</span></div>
+                    <span class="text-xs bg-green-600 px-3 py-1 rounded-full">Chat Now</span>
+                </a>
+                <a id="support-tg-link" href="#" target="_blank" class="flex items-center justify-between p-4 bg-blue-600/10 border border-blue-600/20 rounded-2xl hover:bg-blue-600/20 transition">
+                    <div class="flex items-center gap-3"><span class="text-xl">✈️</span><span class="font-bold">Telegram Channel</span></div>
+                    <span class="text-xs bg-blue-600 px-3 py-1 rounded-full">Join Us</span>
+                </a>
+                <div class="p-4 bg-white/5 rounded-2xl text-left">
+                    <p class="text-[10px] text-gray-500 uppercase font-bold mb-1">Email Address</p>
+                    <p id="support-email-text" class="font-bold">Loading...</p>
+                </div>
+            </div>
+            <button onclick="showPage('home')" class="w-full bg-[#333] p-4 rounded-2xl mt-8 font-bold hover:bg-white hover:text-black transition">Back to Home</button>
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, query, where, getDocs, doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, addDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyD59XK0cdjRZ6XQC1LSqnrw8EQxWa_mnGE",
+            authDomain: "notebyak.firebaseapp.com",
+            projectId: "notebyak",
+            storageBucket: "notebyak.firebasestorage.app",
+            messagingSenderId: "28894550813",
+            appId: "1:28894550813:web:54fe7ff18182e4cbbb5ff4"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+        let allChannels = [];
+        let favorites = [];
+        let hls = null;
+        let activeCat = "ALL";
+
+        // Device ID Logic
+        let myDeviceId = localStorage.getItem('iptv_device_id');
+        if (!myDeviceId) {
+            myDeviceId = 'DEV-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+            localStorage.setItem('iptv_device_id', myDeviceId);
+        }
+
+        // Auth Logic
+        window.addEventListener('load', () => {
+            const saved = localStorage.getItem('iptv_user');
+            if (saved) startUserSync(JSON.parse(saved).id);
+            loadAppSettings();
+        });
+
+        async function startUserSync(id) {
+            onSnapshot(doc(db, "users", id), (d) => {
+                if (!d.exists()) return handleLogout();
+                currentUser = { id: d.id, ...d.data() };
+                favorites = d.data().favorites || [];
+                updateUIStatus();
+            });
+        }
+
+        function loadAppSettings() {
+            onSnapshot(doc(db, "settings", "app_config"), (d) => {
+                if(d.exists()) {
+                    const data = d.data();
+                    // Notice Board
+                    if(data.live_notice) {
+                        document.getElementById('notice-container').classList.remove('hidden');
+                        document.getElementById('live-notice').innerText = data.live_notice;
+                    } else {
+                        document.getElementById('notice-container').classList.add('hidden');
+                    }
+                    // Support Info
+                    if(data.support_whatsapp) document.getElementById('support-wa-link').href = `https://wa.me/${data.support_whatsapp}`;
+                    if(data.support_telegram) document.getElementById('support-tg-link').href = data.support_telegram;
+                    if(data.support_email) document.getElementById('support-email-text').innerText = data.support_email;
+					if(data.bkash_num) document.getElementById('pay-bkash').innerText = data.bkash_num;
+					if(data.nagad_num) document.getElementById('pay-nagad').innerText = data.nagad_num;
+                    
+                    // Price & Expiry Msg
+                    document.getElementById('display-price').innerText = data.monthly_price || '0';
+                    if(data.expire_message) document.getElementById('exp-msg-body').innerText = data.expire_message;
+                }
+            });
+        }
+
+        function updateUIStatus() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+            document.getElementById('main-header').classList.remove('hidden');
+
+            const now = new Date();
+            const end = new Date(currentUser.expiry);
+            const isExpired = currentUser.expiry && now > end;
+
+            document.getElementById('expiry-timer').innerText = currentUser.expiry ? currentUser.expiry.split('T')[0] : 'No Limit';
+            
+            // Profile Data
+            document.getElementById('p-name').innerText = currentUser.name;
+            document.getElementById('p-email').innerText = currentUser.email;
+            document.getElementById('p-pin').innerText = currentUser.pin;
+            document.getElementById('p-start').innerText = currentUser.start_at || 'N/A';
+            document.getElementById('p-end').innerText = currentUser.expiry || 'N/A';
+
+            if (isExpired) {
+                document.getElementById('expiry-warning').classList.remove('hidden');
+                document.getElementById('home-page').classList.add('hidden');
+                document.getElementById('search-box').classList.add('hidden');
+            } else {
+                document.getElementById('expiry-warning').classList.add('hidden');
+                document.getElementById('home-page').classList.remove('hidden');
+                document.getElementById('search-box').classList.remove('hidden');
+                loadContent();
+            }
+        }
+
+        window.handleLogin = async () => {
+            const uid = document.getElementById('user-id').value.trim();
+            const pin = document.getElementById('user-pin').value.trim();
+            const btn = document.getElementById('login-btn');
+            btn.innerText = "AUTHENTICATING..."; btn.disabled = true;
+
+            const q = query(collection(db, "users"), where("email", "==", uid), where("pin", "==", pin));
+            const snap = await getDocs(q);
+            
+            if (snap.empty) {
+                btn.innerText = "START STREAMING"; btn.disabled = false;
+                return document.getElementById('login-err').classList.remove('hidden');
+            }
+
+            const userDoc = snap.docs[0];
+            const userData = userDoc.data();
+            const deviceIds = userData.deviceIds || [];
+
+            // Device Limit Check (Max 2)
+            if (!deviceIds.includes(myDeviceId)) {
+                if (deviceIds.length >= (userData.device_limit || 2)) {
+                    btn.innerText = "START STREAMING"; btn.disabled = false;
+                    alert("❌ Device Limit Reached! Please contact admin to reset devices.");
+                    return;
+                } else {
+                    await updateDoc(doc(db, "users", userDoc.id), {
+                        deviceIds: arrayUnion(myDeviceId)
+                    });
+                }
+            }
+
+            localStorage.setItem('iptv_user', JSON.stringify({id: userDoc.id}));
+            location.reload();
+        };
+
+        window.handleLogout = () => { localStorage.removeItem('iptv_user'); location.reload(); };
+
+        function loadContent() {
+            // Categories
+            onSnapshot(collection(db, "categories"), s => {
+                let html = `<button onclick="filterByCat('ALL', this)" class="cat-btn px-6 py-2 bg-[#1a1a1a] rounded-full text-[10px] font-bold uppercase tracking-widest ${activeCat === 'ALL' ? 'cat-active' : ''}">ALL</button>`;
+                s.forEach(d => {
+                    const name = d.data().name;
+                    html += `<button onclick="filterByCat('${name}', this)" class="cat-btn px-6 py-2 bg-[#1a1a1a] rounded-full text-[10px] font-bold uppercase tracking-widest ${activeCat === name ? 'cat-active' : ''}">${name}</button>`;
+                });
+                document.getElementById('category-bar').innerHTML = html;
+            });
+
+            // Channels
+            onSnapshot(collection(db, "channels"), s => {
+                allChannels = []; s.forEach(d => allChannels.push({id: d.id, ...d.data()}));
+                refreshGrids();
+            });
+        }
+
+        function refreshGrids() {
+            renderGrid(allChannels, 'channel-grid');
+            const favChannels = allChannels.filter(c => favorites.includes(c.id));
+            renderGrid(favChannels, 'wishlist-grid');
+        }
+
+        window.renderGrid = (list, targetId) => {
+            let html = "";
+            list.forEach(ch => {
+                const isFav = favorites.includes(ch.id);
+                html += `
+                    <div class="channel-card" onclick="playChannel('${ch.id}')">
+                        <button onclick="event.stopPropagation(); toggleFav('${ch.id}')" class="fav-btn">
+                            <span class="${isFav ? 'text-red-500' : 'text-gray-500'} text-[10px]">${isFav ? '❤️' : '🤍'}</span>
+                        </button>
+                        <div class="icon-circle shadow-lg">
+                            <img src="${ch.logo}" onerror="this.src='https://img.icons8.com/ios-filled/100/ffffff/television.png'">
+                        </div>
+                        <p class="text-[10px] font-bold text-gray-400 truncate px-1">${ch.name}</p>
+                    </div>`;
+            });
+            document.getElementById(targetId).innerHTML = html || `<p class="text-gray-600 py-10 w-full text-center">No channels found</p>`;
+        };
+
+        window.toggleFav = async (id) => {
+            const userRef = doc(db, "users", currentUser.id);
+            if (favorites.includes(id)) await updateDoc(userRef, { favorites: arrayRemove(id) });
+            else await updateDoc(userRef, { favorites: arrayUnion(id) });
+        };
+
+        window.filterByCat = (cat, btn) => {
+            activeCat = cat;
+            document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('cat-active'));
+            if(btn) btn.classList.add('cat-active');
+            
+            if(cat === 'ALL') renderGrid(allChannels, 'channel-grid');
+            else renderGrid(allChannels.filter(c => c.category === cat), 'channel-grid');
+        };
+
+        window.playChannel = (id) => {
+            const ch = allChannels.find(c => c.id === id);
+            document.getElementById('player-container').classList.remove('hidden');
+            document.getElementById('now-playing').innerText = ch.name;
+            document.getElementById('player-spinner').style.display = 'flex';
+            
+            const video = document.getElementById('custom-video');
+            if (hls) hls.destroy();
+
+            const isToffee = ch.url.includes('toffeelive.com');
+
+            if (Hls.isSupported()) {
+                const hlsConfig = isToffee ? {
+                    xhrSetup: function(xhr, url) {
+                        xhr.setRequestHeader('User-Agent', 'Toffee (Linux;Android 14)');
+                        xhr.withCredentials = false;
+                    }
+                } : {};
+
+                hls = new Hls(hlsConfig);
+                hls.loadSource(ch.url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play();
+                    document.getElementById('player-spinner').style.display = 'none';
+                });
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        document.getElementById('player-spinner').style.display = 'none';
+                        alert("⚠️ এই চ্যানেলটি এখন অফলাইন বা বিশেষ সুরক্ষিত।");
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = ch.url;
+                video.play();
+                document.getElementById('player-spinner').style.display = 'none';
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        window.sendPaymentRequest = async () => {
+            const num = document.getElementById('pay-number').value.trim();
+            const trx = document.getElementById('pay-trx').value.trim();
+            const btn = document.getElementById('pay-btn');
+
+            if(!num || !trx) return alert("Please fill all fields!");
+            
+            btn.innerText = "SUBMITTING..."; btn.disabled = true;
+            try {
+                await addDoc(collection(db, "payment_requests"), {
+                    userId: currentUser.id,
+                    userName: currentUser.name,
+                    number: num,
+                    trxId: trx,
+                    status: "Pending",
+                    timestamp: new Date().toISOString()
+                });
+                alert("✅ Request Sent! Please wait for admin approval.");
+                document.getElementById('pay-number').value = "";
+                document.getElementById('pay-trx').value = "";
+            } catch(e) { alert("Error sending request."); }
+            finally { btn.innerText = "SUBMIT REQUEST"; btn.disabled = false; }
+        };
+
+        window.toggleSidebar = () => document.getElementById('sidebar').classList.toggle('sidebar-hidden');
+
+window.showPage = (page) => {
+    // ১. প্রথমে সব পেজ থেকে 'hidden' ক্লাস সরাতে হবে (যদি ভুলে কোথাও থেকে থাকে)
+    // ২. তারপর সবগুলোতে hidden ক্লাস যোগ করতে হবে
+    document.querySelectorAll('.page-view').forEach(p => {
+        p.classList.add('hidden');
+    });
+
+    // ৩. এখন শুধুমাত্র যেটা দরকার সেটা থেকে hidden সরাতে হবে
+    const target = document.getElementById(page + '-page');
+    if (target) {
+        target.classList.remove('hidden');
+    }
+
+    // ৪. সার্চ বার ম্যানেজমেন্ট
+    if (page === 'home') document.getElementById('search-box').classList.remove('hidden');
+    else document.getElementById('search-box').classList.add('hidden');
+
+    // ৫. সাইডবার বন্ধ করা
+    document.getElementById('sidebar').classList.add('sidebar-hidden');
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+        window.searchChannels = () => {
+            const term = document.getElementById('search-input').value.toLowerCase();
+            renderGrid(allChannels.filter(c => c.name.toLowerCase().includes(term)), 'channel-grid');
+        };
+
+        window.closePlayer = () => {
+            document.getElementById('player-container').classList.add('hidden');
+            document.getElementById('custom-video').pause();
+            if(hls) hls.destroy();
+        };
+
+        window.cycleAspectRatio = () => {
+            const modes = ["contain", "fill", "cover"];
+            const current = modes.indexOf(document.getElementById('custom-video').style.objectFit || "contain");
+            document.getElementById('custom-video').style.objectFit = modes[(current + 1) % 3];
+        };
+
+    </script>
+</body>
+</html>
