@@ -2,10 +2,10 @@
   "name": "TV BY KAFI",
   "short_name": "TV BY KAFI",
   "description": "Live TV Streaming App by Kafi",
-  "id": "com.kafi.tvapp",
+  "id": "tv.by.kafi.app",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "portrait",
   "background_color": "#000000",
   "theme_color": "#e50914",
   "lang": "bn",
@@ -21,21 +21,29 @@
       "src": "https://img.icons8.com/fluency/512/television.png",
       "sizes": "512x512",
       "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/512/television.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ],
   "screenshots": [
     {
-      "src": "https://placehold.co/600x400/000000/FFFFFF/png?text=TV+BY+KAFI+Mobile",
-      "sizes": "600x400",
+      "src": "https://placehold.co/450x800/000000/FFFFFF/png?text=Mobile+View",
+      "sizes": "450x800",
       "type": "image/png",
-      "form_factor": "narrow"
+      "form_factor": "narrow",
+      "label": "Mobile Home Screen"
     },
     {
-      "src": "https://placehold.co/1280x720/000000/FFFFFF/png?text=TV+BY+KAFI+Desktop",
+      "src": "https://placehold.co/1280x720/000000/FFFFFF/png?text=Desktop+View",
       "sizes": "1280x720",
       "type": "image/png",
-      "form_factor": "wide"
+      "form_factor": "wide",
+      "label": "Desktop Stream View"
     }
   ]
 }
